@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "installCommand": "npm install",
+  "framework": "vite",
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "functions": {
+    "api/[...path].ts": {
+      "maxDuration": 300,
+      "memory": 1024,
+      "includeFiles": "node_modules/@sparticuz/chromium/**"
+    }
+  }
+}

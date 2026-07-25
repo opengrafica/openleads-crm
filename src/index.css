@@ -1,0 +1,100 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700&display=swap');
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Sora", ui-sans-serif, system-ui, sans-serif;
+  --color-brand-50: #ecfdf8;
+  --color-brand-100: #d1faf0;
+  --color-brand-200: #a7f3e1;
+  --color-brand-300: #6ee7cb;
+  --color-brand-400: #34d3ad;
+  --color-brand-500: #0d9f7e;
+  --color-brand-600: #0b7f66;
+  --color-brand-700: #0a6553;
+  --color-brand-800: #0a5144;
+  --color-brand-900: #084338;
+  --color-surface: #f4f7f6;
+  --color-ink: #0f1c1a;
+  --color-muted: #5b6b67;
+}
+
+:root {
+  color-scheme: light;
+  --bg: #f4f7f6;
+  --bg-elevated: #ffffff;
+  --bg-muted: #e8efec;
+  --border: #d5e0db;
+  --text: #0f1c1a;
+  --text-muted: #5b6b67;
+  --accent: #0d9f7e;
+  --accent-soft: rgba(13, 159, 126, 0.12);
+  --danger: #c2410c;
+  --warning: #b45309;
+  --success: #047857;
+  --shadow: 0 10px 30px -18px rgba(15, 28, 26, 0.35);
+  --sidebar: #0a5144;
+  --sidebar-text: #e8f8f3;
+}
+
+.dark {
+  color-scheme: dark;
+  --bg: #0b1412;
+  --bg-elevated: #12201c;
+  --bg-muted: #1a2b26;
+  --border: #243832;
+  --text: #e8f2ef;
+  --text-muted: #9bb0a8;
+  --accent: #34d3ad;
+  --accent-soft: rgba(52, 211, 173, 0.14);
+  --danger: #fb923c;
+  --warning: #fbbf24;
+  --success: #34d399;
+  --shadow: 0 12px 40px -20px rgba(0, 0, 0, 0.7);
+  --sidebar: #071410;
+  --sidebar-text: #d7efe7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(13, 159, 126, 0.12), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(10, 101, 83, 0.1), transparent 50%),
+    var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--font-display);
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--text-muted) 45%, transparent);
+  border-radius: 999px;
+}
