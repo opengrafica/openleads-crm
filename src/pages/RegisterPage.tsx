@@ -7,27 +7,27 @@ import { Input, Label } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 
 export function RegisterPage() {
-  const { user, loading, signUp } = useAuth()
+  const { user, loading, signUp, signOut } = useAuth()
   const [fullName, setFullName] = useState('')
   const [companyName, setCompanyName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false)
 
-  if (!loading && user) return <Navigate to="/app" replace />
+  // Se já logado e não acabou de cadastrar, vai pro app
+  if (!loading && user && !showSuccessPopup) return <Navigate to="/app" replace />
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setSubmitting(true)
     setError(null)
-    setMessage(null)
     try {
       await signUp(email, password, fullName, companyName)
-      setMessage(
-        'Conta criada! Aguarde a aprovação do Super Admin para liberar o acesso ao sistema.',
-      )
+      setShowSuccessPopup(true)
+      // Evita entrar no app pendente; desloga e mostra o popup
+      await signOut()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha no cadastro')
     } finally {
@@ -36,11 +36,11 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-svh items-center justify-center px-4 py-10">
+    <div className="relative flex min-h-svh items-center justify-center px-4 py-10">
       <Card className="w-full max-w-md">
         <h1 className="font-display text-3xl font-bold">Cadastro de cliente</h1>
         <p className="mt-1 text-sm text-[var(--text-muted)]">
-          Após o cadastro, sua conta fica pendente até o Super Admin aprovar.
+          Crie sua conta e comece a prospectar com o OpenLeads.
         </p>
 
         {!isSupabaseConfigured ? (
@@ -87,7 +87,6 @@ export function RegisterPage() {
               />
             </div>
             {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
-            {message ? <p className="text-sm text-[var(--success)]">{message}</p> : null}
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting ? 'Criando...' : 'Criar conta'}
             </Button>
@@ -101,6 +100,26 @@ export function RegisterPage() {
           </Link>
         </p>
       </Card>
+
+      {showSuccessPopup ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-6 shadow-xl">
+            <h2 className="font-display text-xl font-bold">Conta criada!</h2>
+            <p className="mt-3 text-sm leading-relaxed text-[var(--text-muted)]">
+              Aguarde que em até 1 a 2 horas sua conta será ativada, com 3 dias grátis para testes.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <Link to="/login">
+                <Button
+                  onClick={() => setShowSuccessPopup(false)}
+                >
+                  Entendi
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

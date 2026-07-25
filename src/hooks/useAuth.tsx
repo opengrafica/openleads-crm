@@ -128,12 +128,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       })
       if (error) throw error
-      if (data.user && companyName) {
+
+      const uid = data.user?.id
+      if (!uid) {
+        throw new Error('Não foi possível criar a conta. Tente outro e-mail ou faça login.')
+      }
+
+      // Garante linha em profiles (mesmo se o e-mail já existia em auth.users de outro app)
+      const isSuper = email.trim().toLowerCase() === 'opengraficaoficial@gmail.com'
+      const { error: profileErr } = await supabase.from('profiles').upsert(
+        {
+          id: uid,
+          email: email.trim().toLowerCase(),
+          full_name: fullName,
+          company_name: companyName || null,
+          role: isSuper ? 'admin' : 'user',
+          account_status: isSuper ? 'approved' : 'pending',
+          approved_at: isSuper ? new Date().toISOString() : null,
+        },
+        { onConflict: 'id' },
+      )
+      if (profileErr) {
+        // Fallback: update se já existir
         await supabase
           .from('profiles')
-          .update({ company_name: companyName, full_name: fullName })
-          .eq('id', data.user.id)
+          .update({
+            full_name: fullName,
+            company_name: companyName || null,
+            account_status: isSuper ? 'approved' : 'pending',
+          })
+          .eq('id', uid)
       }
+
+      await supabase.from('subscriptions').upsert(
+        {
+          user_id: uid,
+          plan: 'free',
+          status: 'trialing',
+          current_period_end: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+        { onConflict: 'user_id' },
+      )
     },
     [],
   )

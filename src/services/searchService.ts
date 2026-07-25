@@ -25,6 +25,7 @@ export type SearchStreamEvent =
   | { type: 'job'; jobId: string }
   | { type: 'done'; source: string; count: number; city: string; state: string }
   | { type: 'error'; message: string }
+  | { type: 'disconnected'; message: string }
 
 export async function controlSearchJob(
   jobId: string,
@@ -69,6 +70,7 @@ export function searchBusinessesStream(
   if (params.radiusKm) qs.set('radiusKm', String(params.radiusKm))
 
   let finished = false
+  let placeCount = 0
   const es = new EventSource(`/api/places/search/stream?${qs}`)
 
   const finish = (event?: SearchStreamEvent) => {
@@ -81,6 +83,7 @@ export function searchBusinessesStream(
   es.onmessage = (msg) => {
     try {
       const event = JSON.parse(msg.data) as SearchStreamEvent
+      if (event.type === 'place') placeCount += 1
       if (event.type === 'done' || event.type === 'error') {
         finish(event)
         return
@@ -96,15 +99,20 @@ export function searchBusinessesStream(
       es.close()
       return
     }
+    // Não cancela o job: resultados já salvos na nuvem permanecem
     finish({
-      type: 'error',
-      message: 'A busca foi interrompida. Clique em buscar novamente.',
+      type: 'disconnected',
+      message:
+        placeCount > 0
+          ? `Conexão encerrada · ${placeCount} contato(s) salvos na nuvem. Você pode reabrir esta busca.`
+          : 'Conexão encerrada. Clique em Buscar para tentar novamente.',
     })
   }
 
+  // Ao sair da página: só fecha o stream — NÃO cancela a busca no servidor
   return () => {
+    if (finished) return
     finished = true
     es.close()
-    void controlSearchJob(jobId, 'cancel').catch(() => undefined)
   }
 }

@@ -140,7 +140,9 @@ export function SearchPage() {
     setMessage(
       job.status === 'completed'
         ? `Busca na nuvem · ${job.result_count} contato(s)`
-        : `Reconectado à busca na nuvem (${job.status})`,
+        : job.status === 'failed'
+          ? `Busca anterior com falha · ${job.result_count} contato(s) salvos. Você pode buscar de novo.`
+          : `Busca na nuvem · ${job.result_count} contato(s) · ${job.status}`,
     )
 
     // Se ainda rodando, acompanha por polling
@@ -331,14 +333,46 @@ export function SearchPage() {
             setMessage('Resultados salvos na nuvem — você pode sair e voltar depois.')
           }
         }
+        if (event.type === 'disconnected') {
+          setLoading(false)
+          setPaused(false)
+          setError(null)
+          setMessage(event.message)
+          void (async () => {
+            const rows = await loadCloudSearchResults(newJobId)
+            const count = Math.max(rows.length, captured)
+            if (rows.length) {
+              setResults(rows)
+              setChecked(new Set(rows.map((r) => r.place_id)))
+            }
+            if (count > 0) {
+              await updateCloudSearchJob(newJobId, {
+                status: 'completed',
+                result_count: count,
+                status_message: `Salvo na nuvem · ${count}`,
+                completed_at: new Date().toISOString(),
+              })
+            } else {
+              await updateCloudSearchJob(newJobId, {
+                status: 'cancelled',
+                status_message: event.message,
+                completed_at: new Date().toISOString(),
+              })
+            }
+            void refreshCloudJobs()
+          })()
+        }
         if (event.type === 'error') {
           setLoading(false)
           setPaused(false)
           setError(event.message)
           void updateCloudSearchJob(newJobId, {
-            status: 'failed',
-            error_message: event.message,
-            status_message: event.message,
+            status: captured > 0 ? 'completed' : 'failed',
+            result_count: captured,
+            status_message:
+              captured > 0
+                ? `Salvo na nuvem · ${captured} (conexão encerrada)`
+                : event.message,
             completed_at: new Date().toISOString(),
           }).then(() => refreshCloudJobs())
         }
