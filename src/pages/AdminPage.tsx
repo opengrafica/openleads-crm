@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
+  adminSetAccountStatus,
   adminUpdateSubscription,
   adminUpdateUserRole,
   getAdminData,
@@ -8,22 +9,30 @@ import type { AdminStats, Profile, Subscription, SubscriptionPlan, SubscriptionS
 import { PLAN_LABELS } from '@/types'
 import { Card, StatCard, Badge } from '@/components/ui/Card'
 import { Select } from '@/components/ui/Input'
-import { Users, CreditCard, Target, Wallet } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
+import { Users, CreditCard, Target, Wallet, UserCheck, Clock } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
+import { useAuth } from '@/hooks/useAuth'
+import { Link } from 'react-router-dom'
 
 export function AdminPage() {
+  const { user } = useAuth()
   const [users, setUsers] = useState<Profile[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   async function refresh() {
     setLoading(true)
+    setError(null)
     try {
       const data = await getAdminData()
       setUsers(data.users)
       setSubscriptions(data.subscriptions)
       setStats(data.stats)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao carregar admin')
     } finally {
       setLoading(false)
     }
@@ -37,21 +46,40 @@ export function AdminPage() {
     return subscriptions.find((s) => s.user_id === userId)
   }
 
+  const pending = users.filter((u) => (u.account_status || 'pending') === 'pending')
+
   if (loading || !stats) {
-    return <p className="text-[var(--text-muted)]">Carregando painel admin...</p>
+    return <p className="text-[var(--text-muted)]">Carregando Super Admin...</p>
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-3xl font-bold tracking-tight">Painel Admin</h1>
-        <p className="mt-1 text-[var(--text-muted)]">
-          Usuários, assinaturas e estatísticas da plataforma.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="font-display text-3xl font-bold tracking-tight">Super Admin</h1>
+          <p className="mt-1 text-[var(--text-muted)]">
+            Aprove clientes, acompanhe uso e dispare campanhas.
+          </p>
+        </div>
+        <Link to="/app/whatsapp">
+          <Button size="sm">Ir para disparos WhatsApp</Button>
+        </Link>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Usuários" value={stats.totalUsers} icon={<Users className="h-5 w-5" />} />
+      {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <StatCard
+          label="Clientes aprovados"
+          value={stats.approvedClients ?? 0}
+          icon={<UserCheck className="h-5 w-5" />}
+        />
+        <StatCard
+          label="Aguardando aprovação"
+          value={stats.pendingClients ?? pending.length}
+          icon={<Clock className="h-5 w-5" />}
+        />
+        <StatCard label="Contas totais" value={stats.totalUsers} icon={<Users className="h-5 w-5" />} />
         <StatCard
           label="Assinaturas ativas"
           value={stats.activeSubscriptions}
@@ -68,6 +96,45 @@ export function AdminPage() {
           icon={<Wallet className="h-5 w-5" />}
         />
       </div>
+
+      {pending.length ? (
+        <Card className="space-y-3">
+          <h2 className="font-display text-lg font-semibold">Aprovações pendentes</h2>
+          <div className="space-y-2">
+            {pending.map((u) => (
+              <div
+                key={u.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--border)] px-3 py-2"
+              >
+                <div>
+                  <p className="font-semibold">{u.full_name || '—'}</p>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    {u.email}
+                    {u.company_name ? ` · ${u.company_name}` : ''}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      void adminSetAccountStatus(u.id, 'approved', user?.id).then(refresh)
+                    }
+                  >
+                    Aprovar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => void adminSetAccountStatus(u.id, 'rejected').then(refresh)}
+                  >
+                    Recusar
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
@@ -87,38 +154,52 @@ export function AdminPage() {
 
         <Card className="overflow-hidden p-0">
           <div className="border-b border-[var(--border)] px-5 py-4">
-            <h2 className="font-display text-lg font-semibold">Usuários</h2>
+            <h2 className="font-display text-lg font-semibold">Todos os usuários</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm">
               <thead className="bg-[var(--bg-muted)] text-xs uppercase tracking-wide text-[var(--text-muted)]">
                 <tr>
                   <th className="px-4 py-3">Usuário</th>
+                  <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Papel</th>
                   <th className="px-4 py-3">Plano</th>
-                  <th className="px-4 py-3">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {users.map((user) => {
-                  const sub = subFor(user.id)
+                {users.map((row) => {
+                  const sub = subFor(row.id)
+                  const status = row.account_status || 'pending'
                   return (
-                    <tr key={user.id} className="border-t border-[var(--border)]">
+                    <tr key={row.id} className="border-t border-[var(--border)]">
                       <td className="px-4 py-3">
-                        <p className="font-semibold">{user.full_name}</p>
-                        <p className="text-xs text-[var(--text-muted)]">{user.email}</p>
+                        <p className="font-semibold">{row.full_name}</p>
+                        <p className="text-xs text-[var(--text-muted)]">{row.email}</p>
                         <p className="text-xs text-[var(--text-muted)]">
-                          desde {formatDate(user.created_at)}
+                          desde {formatDate(row.created_at)}
                         </p>
                       </td>
                       <td className="px-4 py-3">
+                        <Badge
+                          tone={
+                            status === 'approved'
+                              ? 'success'
+                              : status === 'rejected'
+                                ? 'danger'
+                                : 'warning'
+                          }
+                        >
+                          {status}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3">
                         <Select
-                          value={user.role}
+                          value={row.role === 'customer' ? 'user' : row.role}
                           onChange={(e) =>
                             void adminUpdateUserRole(
-                              user.id,
+                              row.id,
                               e.target.value as Profile['role'],
-                            ).then(() => refresh())
+                            ).then(refresh)
                           }
                         >
                           <option value="user">user</option>
@@ -126,35 +207,34 @@ export function AdminPage() {
                         </Select>
                       </td>
                       <td className="px-4 py-3">
-                        <Select
-                          value={sub?.plan ?? 'free'}
-                          onChange={(e) =>
-                            void adminUpdateSubscription(user.id, {
-                              plan: e.target.value as SubscriptionPlan,
-                            }).then(() => refresh())
-                          }
-                        >
-                          {Object.entries(PLAN_LABELS).map(([k, v]) => (
-                            <option key={k} value={k}>
-                              {v}
-                            </option>
-                          ))}
-                        </Select>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Select
-                          value={sub?.status ?? 'trialing'}
-                          onChange={(e) =>
-                            void adminUpdateSubscription(user.id, {
-                              status: e.target.value as SubscriptionStatus,
-                            }).then(() => refresh())
-                          }
-                        >
-                          <option value="trialing">trialing</option>
-                          <option value="active">active</option>
-                          <option value="past_due">past_due</option>
-                          <option value="canceled">canceled</option>
-                        </Select>
+                        <div className="flex flex-col gap-1">
+                          <Select
+                            value={sub?.plan || 'free'}
+                            onChange={(e) =>
+                              void adminUpdateSubscription(row.id, {
+                                plan: e.target.value as SubscriptionPlan,
+                              }).then(refresh)
+                            }
+                          >
+                            <option value="free">Free</option>
+                            <option value="starter">Starter</option>
+                            <option value="pro">Pro</option>
+                            <option value="enterprise">Enterprise</option>
+                          </Select>
+                          <Select
+                            value={sub?.status || 'trialing'}
+                            onChange={(e) =>
+                              void adminUpdateSubscription(row.id, {
+                                status: e.target.value as SubscriptionStatus,
+                              }).then(refresh)
+                            }
+                          >
+                            <option value="trialing">trialing</option>
+                            <option value="active">active</option>
+                            <option value="past_due">past_due</option>
+                            <option value="canceled">canceled</option>
+                          </Select>
+                        </div>
                       </td>
                     </tr>
                   )

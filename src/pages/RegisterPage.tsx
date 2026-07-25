@@ -7,15 +7,16 @@ import { Input, Label } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 
 export function RegisterPage() {
-  const { user, loading, signUp, enterDemo } = useAuth()
+  const { user, loading, signUp } = useAuth()
   const [fullName, setFullName] = useState('')
+  const [companyName, setCompanyName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  if (!loading && user) return <Navigate to="/" replace />
+  if (!loading && user) return <Navigate to="/app" replace />
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -23,8 +24,10 @@ export function RegisterPage() {
     setError(null)
     setMessage(null)
     try {
-      await signUp(email, password, fullName)
-      setMessage('Conta criada! Verifique seu e-mail se a confirmação estiver ativa.')
+      await signUp(email, password, fullName, companyName)
+      setMessage(
+        'Conta criada! Aguarde a aprovação do Super Admin para liberar o acesso ao sistema.',
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha no cadastro')
     } finally {
@@ -35,19 +38,13 @@ export function RegisterPage() {
   return (
     <div className="flex min-h-svh items-center justify-center px-4 py-10">
       <Card className="w-full max-w-md">
-        <h1 className="font-display text-3xl font-bold">Criar conta</h1>
-        <p className="mt-1 text-sm text-[var(--text-muted)]">OpenLeads CRM</p>
+        <h1 className="font-display text-3xl font-bold">Cadastro de cliente</h1>
+        <p className="mt-1 text-sm text-[var(--text-muted)]">
+          Após o cadastro, sua conta fica pendente até o Super Admin aprovar.
+        </p>
 
         {!isSupabaseConfigured ? (
-          <div className="mt-6 space-y-3">
-            <p className="text-sm text-[var(--text-muted)]">
-              Configure o Supabase no <code>.env</code> para registrar usuários reais, ou use o modo
-              demo.
-            </p>
-            <Button className="w-full" onClick={() => enterDemo(false)}>
-              Entrar no demo
-            </Button>
-          </div>
+          <p className="mt-6 text-sm text-[var(--danger)]">Supabase não configurado.</p>
         ) : (
           <form className="mt-6 space-y-4" onSubmit={onSubmit}>
             <div>
@@ -57,6 +54,15 @@ export function RegisterPage() {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required
+              />
+            </div>
+            <div>
+              <Label htmlFor="company">Empresa</Label>
+              <Input
+                id="company"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="Opcional"
               />
             </div>
             <div>

@@ -21,22 +21,20 @@ import { cn } from '@/lib/utils'
 import { PLAN_LABELS } from '@/types'
 
 const nav = [
-  { to: '/', label: 'Início', icon: LayoutDashboard },
-  { to: '/busca', label: 'Busca', icon: Search },
-  { to: '/crm', label: 'Leads', icon: Users },
-  { to: '/whatsapp', label: 'WhatsApp', icon: MessageCircle },
+  { to: '/app', label: 'Início', icon: LayoutDashboard },
+  { to: '/app/busca', label: 'Busca', icon: Search },
+  { to: '/app/crm', label: 'Leads', icon: Users },
+  { to: '/app/whatsapp', label: 'WhatsApp', icon: MessageCircle },
 ]
 
 export function AppLayout() {
-  const { user, subscription, signOut, isDemo } = useAuth()
+  const { user, subscription, signOut, isAdmin } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const [open, setOpen] = useState(false)
 
   const links = [
     ...nav,
-    ...(user?.role === 'admin'
-      ? [{ to: '/admin', label: 'Admin', icon: Shield }]
-      : []),
+    ...(isAdmin ? [{ to: '/app/admin', label: 'Super Admin', icon: Shield }] : []),
   ]
 
   return (
@@ -68,7 +66,7 @@ export function AppLayout() {
             <NavLink
               key={to}
               to={to}
-              end={to === '/'}
+              end={to === '/app'}
               onClick={() => setOpen(false)}
               className={({ isActive }) =>
                 cn(
@@ -90,7 +88,6 @@ export function AppLayout() {
           <p className="truncate text-xs text-white/60">{user?.email}</p>
           <p className="mt-1 text-xs text-white/50">
             {subscription ? PLAN_LABELS[subscription.plan] : '—'}
-            {isDemo ? ' · Demo' : ''}
           </p>
         </div>
       </aside>
@@ -140,7 +137,7 @@ export function AppLayout() {
             <NavLink
               key={to}
               to={to}
-              end={to === '/'}
+              end={to === '/app'}
               className={({ isActive }) =>
                 cn(
                   'flex flex-col items-center gap-0.5 rounded-lg px-1 py-2 text-[10px] font-semibold',

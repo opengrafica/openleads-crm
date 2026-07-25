@@ -7,9 +7,8 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { demoStore } from '@/lib/demoStore'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
-import type { Profile, Subscription } from '@/types'
+import type { AccountStatus, Profile, Subscription } from '@/types'
 
 interface AuthContextValue {
   user: Profile | null
@@ -17,10 +16,11 @@ interface AuthContextValue {
   loading: boolean
   isDemo: boolean
   signIn: (email: string, password: string) => Promise<void>
-  signUp: (email: string, password: string, fullName: string) => Promise<void>
+  signUp: (email: string, password: string, fullName: string, companyName?: string) => Promise<void>
   signOut: () => Promise<void>
-  enterDemo: (asAdmin?: boolean) => void
   refreshProfile: () => Promise<void>
+  isApproved: boolean
+  isAdmin: boolean
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -42,13 +42,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Profile | null>(null)
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [loading, setLoading] = useState(true)
-  const [isDemo, setIsDemo] = useState(!isSupabaseConfigured)
 
   const refreshProfile = useCallback(async () => {
-    if (isDemo || !supabase) {
-      const profile = demoStore.getProfile(user?.role === 'admin')
-      setUser(profile)
-      setSubscription(demoStore.getSubscription(profile.id) ?? null)
+    if (!supabase) {
+      setUser(null)
+      setSubscription(null)
       return
     }
     const { data } = await supabase.auth.getUser()
@@ -63,23 +61,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ])
     setUser(profile)
     setSubscription(sub)
-  }, [isDemo, user?.role])
+  }, [])
 
   useEffect(() => {
     let mounted = true
 
     async function init() {
       if (!isSupabaseConfigured || !supabase) {
-        if (mounted) {
-          setIsDemo(true)
-          setLoading(false)
-        }
+        if (mounted) setLoading(false)
         return
       }
 
       const { data } = await supabase.auth.getSession()
       if (data.session?.user && mounted) {
-        setIsDemo(false)
         const [profile, sub] = await Promise.all([
           fetchProfile(data.session.user.id),
           fetchSubscription(data.session.user.id),
@@ -101,7 +95,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSubscription(null)
           return
         }
-        setIsDemo(false)
         const [profile, subscriptionRow] = await Promise.all([
           fetchProfile(session.user.id),
           fetchSubscription(session.user.id),
@@ -118,52 +111,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signIn = useCallback(async (email: string, password: string) => {
-    if (!supabase) throw new Error('Supabase não configurado. Use o modo demo.')
+    if (!supabase) throw new Error('Supabase não configurado. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.')
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
-  }, [])
+    await refreshProfile()
+  }, [refreshProfile])
 
-  const signUp = useCallback(async (email: string, password: string, fullName: string) => {
-    if (!supabase) throw new Error('Supabase não configurado. Use o modo demo.')
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName } },
-    })
-    if (error) throw error
-  }, [])
+  const signUp = useCallback(
+    async (email: string, password: string, fullName: string, companyName?: string) => {
+      if (!supabase) throw new Error('Supabase não configurado.')
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: fullName, company_name: companyName || '' },
+        },
+      })
+      if (error) throw error
+      if (data.user && companyName) {
+        await supabase
+          .from('profiles')
+          .update({ company_name: companyName, full_name: fullName })
+          .eq('id', data.user.id)
+      }
+    },
+    [],
+  )
 
   const signOut = useCallback(async () => {
-    if (isDemo || !supabase) {
-      setUser(null)
-      setSubscription(null)
-      return
-    }
-    await supabase.auth.signOut()
+    if (supabase) await supabase.auth.signOut()
     setUser(null)
     setSubscription(null)
-  }, [isDemo])
-
-  const enterDemo = useCallback((asAdmin = false) => {
-    setIsDemo(true)
-    const profile = demoStore.getProfile(asAdmin)
-    setUser(profile)
-    setSubscription(demoStore.getSubscription(profile.id) ?? null)
   }, [])
+
+  const accountStatus = (user?.account_status || 'pending') as AccountStatus
+  const isApproved = accountStatus === 'approved'
+  const isAdmin = user?.role === 'admin' && isApproved
 
   const value = useMemo(
     () => ({
       user,
       subscription,
       loading,
-      isDemo,
+      isDemo: false,
       signIn,
       signUp,
       signOut,
-      enterDemo,
       refreshProfile,
+      isApproved,
+      isAdmin,
     }),
-    [user, subscription, loading, isDemo, signIn, signUp, signOut, enterDemo, refreshProfile],
+    [user, subscription, loading, signIn, signUp, signOut, refreshProfile, isApproved, isAdmin],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

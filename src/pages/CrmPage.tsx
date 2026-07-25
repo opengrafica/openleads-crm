@@ -87,7 +87,7 @@ export function CrmPage() {
         state: selected.state,
       }),
     ])
-    navigate('/whatsapp')
+    navigate('/app/whatsapp')
   }
 
   return (

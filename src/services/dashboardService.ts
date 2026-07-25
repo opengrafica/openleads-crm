@@ -1,4 +1,3 @@
-import { demoStore } from '@/lib/demoStore'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import type { AdminStats, DashboardStats, Lead, Profile, Subscription } from '@/types'
 
@@ -49,25 +48,7 @@ export async function getAdminData(): Promise<{
   stats: AdminStats
 }> {
   if (!isSupabaseConfigured || !supabase) {
-    const users = demoStore.listUsers()
-    const subscriptions = demoStore.listSubscriptions()
-    const allLeads = users.flatMap((u) => demoStore.listLeads(u.id))
-    const activeSubscriptions = subscriptions.filter((s) => s.status === 'active' || s.status === 'trialing').length
-    const planMap = new Map<Subscription['plan'], number>()
-    for (const s of subscriptions) planMap.set(s.plan, (planMap.get(s.plan) ?? 0) + 1)
-    return {
-      users,
-      subscriptions,
-      stats: {
-        totalUsers: users.length,
-        activeSubscriptions,
-        totalLeads: allLeads.length,
-        revenueEstimate: subscriptions
-          .filter((s) => s.status === 'active')
-          .reduce((acc, s) => acc + PLAN_PRICE[s.plan], 0),
-        usersByPlan: [...planMap.entries()].map(([plan, count]) => ({ plan, count })),
-      },
-    }
+    throw new Error('Supabase não configurado')
   }
 
   const [{ data: users, error: uErr }, { data: subscriptions, error: sErr }, { count }] =
@@ -80,28 +61,36 @@ export async function getAdminData(): Promise<{
   if (sErr) throw sErr
 
   const subs = (subscriptions ?? []) as Subscription[]
+  const profiles = (users ?? []) as Profile[]
   const planMap = new Map<Subscription['plan'], number>()
   for (const s of subs) planMap.set(s.plan, (planMap.get(s.plan) ?? 0) + 1)
 
+  const approvedClients = profiles.filter(
+    (u) => u.account_status === 'approved' && u.role !== 'admin',
+  ).length
+  const pendingClients = profiles.filter((u) => u.account_status === 'pending').length
+
   return {
-    users: (users ?? []) as Profile[],
+    users: profiles,
     subscriptions: subs,
     stats: {
-      totalUsers: users?.length ?? 0,
-      activeSubscriptions: subs.filter((s) => s.status === 'active' || s.status === 'trialing').length,
+      totalUsers: profiles.length,
+      activeSubscriptions: subs.filter((s) => s.status === 'active' || s.status === 'trialing')
+        .length,
       totalLeads: count ?? 0,
       revenueEstimate: subs
         .filter((s) => s.status === 'active')
         .reduce((acc, s) => acc + PLAN_PRICE[s.plan], 0),
       usersByPlan: [...planMap.entries()].map(([plan, count]) => ({ plan, count })),
+      approvedClients,
+      pendingClients,
     },
   }
 }
 
 export async function adminUpdateUserRole(userId: string, role: Profile['role']) {
   if (!isSupabaseConfigured || !supabase) {
-    demoStore.updateUserRole(userId, role)
-    return
+    throw new Error('Supabase não configurado')
   }
   const { error } = await supabase.from('profiles').update({ role }).eq('id', userId)
   if (error) throw error
@@ -112,9 +101,27 @@ export async function adminUpdateSubscription(
   patch: Partial<Pick<Subscription, 'plan' | 'status'>>,
 ) {
   if (!isSupabaseConfigured || !supabase) {
-    demoStore.updateSubscription(userId, patch)
-    return
+    throw new Error('Supabase não configurado')
   }
   const { error } = await supabase.from('subscriptions').update(patch).eq('user_id', userId)
+  if (error) throw error
+}
+
+export async function adminSetAccountStatus(
+  userId: string,
+  status: 'pending' | 'approved' | 'rejected',
+  approvedBy?: string,
+) {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error('Supabase não configurado')
+  }
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      account_status: status,
+      approved_at: status === 'approved' ? new Date().toISOString() : null,
+      approved_by: status === 'approved' ? approvedBy || null : null,
+    })
+    .eq('id', userId)
   if (error) throw error
 }

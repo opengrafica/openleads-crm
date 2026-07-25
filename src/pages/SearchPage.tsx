@@ -31,6 +31,15 @@ import { Card, Badge } from '@/components/ui/Card'
 import { SearchMapPanel } from '@/components/SearchMapPanel'
 import { cn } from '@/lib/utils'
 import { saveWhatsAppSelection } from '@/lib/whatsappSelection'
+import {
+  appendCloudSearchResult,
+  createCloudSearchJob,
+  getCloudSearchJob,
+  listCloudSearchJobs,
+  loadCloudSearchResults,
+  updateCloudSearchJob,
+  type CloudSearchJob,
+} from '@/services/cloudSearchService'
 
 const CONTACT_LIMITS = [10, 20, 30, 50, 75, 100, 150, 200] as const
 
@@ -92,6 +101,7 @@ export function SearchPage() {
   const [error, setError] = useState<string | null>(null)
   const stopRef = useRef<(() => void) | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
+  const [cloudJobs, setCloudJobs] = useState<CloudSearchJob[]>([])
 
   const canSearch = Boolean(cep.replace(/\D/g, '').length === 8 || city.trim())
   const marked = useMemo(
@@ -99,9 +109,65 @@ export function SearchPage() {
     [results, checked],
   )
 
+  async function refreshCloudJobs() {
+    if (!user?.id) return
+    try {
+      setCloudJobs(await listCloudSearchJobs(user.id))
+    } catch {
+      // ignore
+    }
+  }
+
+  useEffect(() => {
+    void refreshCloudJobs()
+  }, [user?.id])
+
   useEffect(() => {
     return () => stopRef.current?.()
   }, [])
+
+  async function openCloudJob(job: CloudSearchJob) {
+    setJobId(job.id)
+    setStatus(job.status_message || job.status)
+    setLoading(job.status === 'running' || job.status === 'paused' || job.status === 'queued')
+    setPaused(job.status === 'paused')
+    setEmbedUrl(job.embed_url)
+    setMapsUrl(job.maps_url)
+    const places = await loadCloudSearchResults(job.id)
+    setResults(places)
+    setChecked(new Set(places.map((p) => p.place_id)))
+    if (places[0]) setSelected(places[0])
+    setMessage(
+      job.status === 'completed'
+        ? `Busca na nuvem · ${job.result_count} contato(s)`
+        : `Reconectado à busca na nuvem (${job.status})`,
+    )
+
+    // Se ainda rodando, acompanha por polling
+    if (job.status === 'running' || job.status === 'paused' || job.status === 'queued') {
+      const timer = setInterval(() => {
+        void (async () => {
+          const latest = await getCloudSearchJob(job.id)
+          if (!latest) return
+          const rows = await loadCloudSearchResults(job.id)
+          setResults(rows)
+          setStatus(latest.status_message || latest.status)
+          setLoading(
+            latest.status === 'running' ||
+              latest.status === 'paused' ||
+              latest.status === 'queued',
+          )
+          setPaused(latest.status === 'paused')
+          if (latest.status === 'completed' || latest.status === 'failed' || latest.status === 'cancelled') {
+            clearInterval(timer)
+            setMessage(`Busca finalizada · ${latest.result_count} contato(s)`)
+            void refreshCloudJobs()
+          }
+        })()
+      }, 2500)
+      return () => clearInterval(timer)
+    }
+  }
 
   function toggleCheck(id: string) {
     setChecked((prev) => {
@@ -129,6 +195,10 @@ export function SearchPage() {
 
   function onSearch(e: FormEvent) {
     e.preventDefault()
+    if (!user?.id) {
+      setError('Faça login para buscar na nuvem.')
+      return
+    }
     stopRef.current?.()
 
     setLoading(true)
@@ -152,6 +222,29 @@ export function SearchPage() {
       .join(' ')
     setMapQuery(initialMap)
 
+    const newJobId = `job_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+    setJobId(newJobId)
+
+    void createCloudSearchJob({
+      id: newJobId,
+      userId: user.id,
+      params: {
+        category,
+        city,
+        state,
+        query,
+        cep: cep || undefined,
+        limit,
+        radiusKm,
+        withContact,
+        fast: fastMode,
+      },
+    })
+      .then(() => refreshCloudJobs())
+      .catch(() => undefined)
+
+    let captured = 0
+
     stopRef.current = searchBusinessesStream(
       {
         query,
@@ -165,13 +258,21 @@ export function SearchPage() {
         wantEmail: fields.email && !fastMode,
         fast: fastMode,
         source: 'google',
+        jobId: newJobId,
       },
       (event) => {
         if (event.type === 'job') setJobId(event.jobId)
-        if (event.type === 'status') setStatus(event.message)
+        if (event.type === 'status') {
+          setStatus(event.message)
+          void updateCloudSearchJob(newJobId, { status_message: event.message, status: 'running' })
+        }
         if (event.type === 'maps_url') {
           setEmbedUrl(event.embedUrl)
           setMapsUrl(event.url)
+          void updateCloudSearchJob(newJobId, {
+            maps_url: event.url,
+            embed_url: event.embedUrl,
+          })
         }
         if (event.type === 'geo') {
           setCity(event.city)
@@ -184,6 +285,7 @@ export function SearchPage() {
         }
         if (event.type === 'place') {
           const place = filterFields(event.place, fields)
+          captured += 1
           setResults((prev) => [...prev, place])
           setChecked((prev) => new Set(prev).add(place.place_id))
           setSelected(place)
@@ -197,6 +299,11 @@ export function SearchPage() {
               place.phone ? ` · ${place.phone}` : ''
             }${place.email ? ` · ${place.email}` : ''}`,
           )
+          void appendCloudSearchResult({ jobId: newJobId, userId: user.id, place })
+          void updateCloudSearchJob(newJobId, {
+            result_count: captured,
+            status_message: `${captured}/${limit} na nuvem`,
+          })
           requestAnimationFrame(() => {
             listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
           })
@@ -206,6 +313,12 @@ export function SearchPage() {
           setPaused(false)
           setSource(event.source)
           setStatus(`Concluído · ${event.count} contato(s)`)
+          void updateCloudSearchJob(newJobId, {
+            status: 'completed',
+            result_count: event.count,
+            status_message: `Concluído · ${event.count}`,
+            completed_at: new Date().toISOString(),
+          }).then(() => refreshCloudJobs())
           if (event.city) setCity(event.city)
           if (event.state) setState(event.state.slice(0, 2).toUpperCase())
           if (!event.count) {
@@ -214,13 +327,20 @@ export function SearchPage() {
                 ? 'Nenhum contato nesse raio. Aumente a quantidade ou o km.'
                 : 'Nenhum resultado. Tente outra categoria, CEP ou cidade.',
             )
+          } else {
+            setMessage('Resultados salvos na nuvem — você pode sair e voltar depois.')
           }
         }
         if (event.type === 'error') {
           setLoading(false)
           setPaused(false)
           setError(event.message)
-          setStatus(null)
+          void updateCloudSearchJob(newJobId, {
+            status: 'failed',
+            error_message: event.message,
+            status_message: event.message,
+            completed_at: new Date().toISOString(),
+          }).then(() => refreshCloudJobs())
         }
       },
     )
@@ -231,6 +351,7 @@ export function SearchPage() {
     await controlSearchJob(jobId, 'pause')
     setPaused(true)
     setStatus((s) => s || 'Pausado')
+    void updateCloudSearchJob(jobId, { status: 'paused', status_message: 'Pausado' })
   }
 
   async function resumeSearch() {
@@ -238,6 +359,7 @@ export function SearchPage() {
     await controlSearchJob(jobId, 'resume')
     setPaused(false)
     setStatus('Continuando busca...')
+    void updateCloudSearchJob(jobId, { status: 'running', status_message: 'Continuando…' })
   }
 
   async function cancelSearch() {
@@ -272,7 +394,7 @@ export function SearchPage() {
       return
     }
     saveWhatsAppSelection(withPhone)
-    navigate('/whatsapp')
+    navigate('/app/whatsapp')
   }
 
   return (
@@ -616,9 +738,50 @@ export function SearchPage() {
           ) : null}
 
           {!loading && results.length === 0 && !error ? (
-            <p className="text-sm text-[var(--text-muted)]">
-              Resultados em tempo real. Marque para exportar ou WhatsApp.
-            </p>
+            <div className="space-y-3">
+              <p className="text-sm text-[var(--text-muted)]">
+                Resultados em tempo real · salvos na nuvem. Marque para exportar ou WhatsApp.
+              </p>
+              {cloudJobs.length ? (
+                <div className="max-h-28 space-y-1 overflow-y-auto rounded-lg border border-[var(--border)] p-2">
+                  <p className="text-[11px] font-semibold text-[var(--text-muted)]">Buscas na nuvem</p>
+                  {cloudJobs.slice(0, 8).map((job) => (
+                    <button
+                      key={job.id}
+                      type="button"
+                      className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-[var(--bg-muted)]"
+                      onClick={() => void openCloudJob(job)}
+                    >
+                      <span className="truncate">
+                        {(job.params as { city?: string; category?: string }).category || 'busca'} ·{' '}
+                        {(job.params as { city?: string }).city || '—'} · {job.result_count}
+                      </span>
+                      <span className="shrink-0 text-[var(--accent)]">{job.status}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {results.length > 0 && cloudJobs.length ? (
+            <div className="mb-2 max-h-24 space-y-1 overflow-y-auto rounded-lg border border-[var(--border)] p-2">
+              <p className="text-[11px] font-semibold text-[var(--text-muted)]">Buscas na nuvem</p>
+              {cloudJobs.slice(0, 5).map((job) => (
+                <button
+                  key={job.id}
+                  type="button"
+                  className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-[var(--bg-muted)]"
+                  onClick={() => void openCloudJob(job)}
+                >
+                  <span className="truncate">
+                    {(job.params as { city?: string; category?: string }).category || 'busca'} ·{' '}
+                    {(job.params as { city?: string }).city || '—'} · {job.result_count}
+                  </span>
+                  <span className="shrink-0 text-[var(--accent)]">{job.status}</span>
+                </button>
+              ))}
+            </div>
           ) : null}
         </div>
 

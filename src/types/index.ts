@@ -1,4 +1,6 @@
-export type UserRole = 'user' | 'admin'
+export type UserRole = 'user' | 'admin' | 'customer'
+
+export type AccountStatus = 'pending' | 'approved' | 'rejected'
 
 export type LeadCategory =
   | 'restaurante'
@@ -36,7 +38,12 @@ export interface Profile {
   email: string
   full_name: string | null
   role: UserRole
+  account_status?: AccountStatus
+  company_name?: string | null
+  phone?: string | null
   avatar_url: string | null
+  approved_at?: string | null
+  approved_by?: string | null
   created_at: string
   updated_at: string
 }
@@ -117,6 +124,8 @@ export interface AdminStats {
   totalLeads: number
   revenueEstimate: number
   usersByPlan: { plan: SubscriptionPlan; count: number }[]
+  approvedClients?: number
+  pendingClients?: number
 }
 
 export const CATEGORY_LABELS: Record<LeadCategory, string> = {

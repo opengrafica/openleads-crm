@@ -8,13 +8,15 @@ import { Input, Label } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 
 export function LoginPage() {
-  const { user, loading, signIn, enterDemo } = useAuth()
+  const { user, loading, signIn, isApproved } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  if (!loading && user) return <Navigate to="/" replace />
+  if (!loading && user) {
+    return <Navigate to={isApproved ? '/app' : '/app'} replace />
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -34,7 +36,7 @@ export function LoginPage() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(13,159,126,0.18),transparent_40%),radial-gradient(circle_at_80%_0%,rgba(10,101,83,0.2),transparent_35%)]" />
       <div className="relative grid w-full max-w-5xl gap-8 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="flex flex-col justify-center">
-          <div className="mb-6 flex items-center gap-3">
+          <Link to="/" className="mb-6 flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--accent)] text-[#06241c]">
               <Sparkles className="h-6 w-6" />
             </div>
@@ -44,63 +46,50 @@ export function LoginPage() {
               </h1>
               <p className="text-sm uppercase tracking-[0.22em] text-[var(--text-muted)]">CRM</p>
             </div>
-          </div>
+          </Link>
           <p className="max-w-md text-lg text-[var(--text-muted)]">
-            Busca de contatos no Maps, gestão de leads e disparo no WhatsApp — no PC e no celular.
+            Entre com sua conta aprovada para buscar contatos, gerir leads e disparar no WhatsApp.
           </p>
         </div>
 
         <Card className="w-full">
           <h2 className="font-display text-2xl font-semibold">Entrar</h2>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">
-            Acesse sua conta ou experimente o modo demo.
-          </p>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">Acesse com e-mail e senha.</p>
 
-          <form className="mt-6 space-y-4" onSubmit={onSubmit}>
-            <div>
-              <Label htmlFor="email">E-mail</Label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={!isSupabaseConfigured}
-              />
-            </div>
-            <div>
-              <Label htmlFor="password">Senha</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={!isSupabaseConfigured}
-              />
-            </div>
-            {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
-            <Button type="submit" className="w-full" disabled={submitting || !isSupabaseConfigured}>
-              {submitting ? 'Entrando...' : 'Entrar'}
-            </Button>
-          </form>
-
-          <div className="my-5 flex items-center gap-3 text-xs text-[var(--text-muted)]">
-            <div className="h-px flex-1 bg-[var(--border)]" />
-            ou
-            <div className="h-px flex-1 bg-[var(--border)]" />
-          </div>
-
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="secondary" onClick={() => enterDemo(false)}>
-              Demo usuário
-            </Button>
-            <Button type="button" variant="secondary" onClick={() => enterDemo(true)}>
-              Demo admin
-            </Button>
-          </div>
+          {!isSupabaseConfigured ? (
+            <p className="mt-6 text-sm text-[var(--danger)]">
+              Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no ambiente.
+            </p>
+          ) : (
+            <form className="mt-6 space-y-4" onSubmit={onSubmit}>
+              <div>
+                <Label htmlFor="email">E-mail</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="password">Senha</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+              {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
+              <Button type="submit" className="w-full" disabled={submitting}>
+                {submitting ? 'Entrando...' : 'Entrar'}
+              </Button>
+            </form>
+          )}
 
           <p className="mt-5 text-center text-sm text-[var(--text-muted)]">
             Não tem conta?{' '}
